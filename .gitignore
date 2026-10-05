@@ -1,0 +1,9 @@
+copytest.csv
+copytest.err
+copytest.dat
+copytest.png
+copytest.plot
+*~
+*.bak
+*.tmp
+

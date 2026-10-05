@@ -1,0 +1,435 @@
+#!/bin/bash
+
+##################################################################
+#
+# Copytest - A simple file copy transfer speed testing tool
+# =========================================================
+#
+# Uses cp, rsync and dd to provide an analysis of the various
+# methods of copying a file from a source and destination location.
+# dd is used with various block sizes to find the optimal transfer
+# size for the combination of filesystems you are testing.
+#
+# Requires:
+# - bash
+# - cp
+# - rsync
+# - dd
+# - bc
+# - gnuplot (optional)
+#
+# Produces a CSV data file of the test results, optionally if you
+# have gnuplot installed the output can be plotted directly into
+# a chart.
+#
+# To run, 'source' this file and follow the instructions displayed.
+#
+#################################################################
+#
+# See: https://github.com/megatron-uk/Copytest
+# For licensing information, see: LICENSE
+#
+##################################################################
+
+
+export COUNTSIZE=2000					# Size of the test file, in megabytes
+export TESTDATE=`date +%y%m%d_%H%M`		# Timestamp
+export TIMEFORMAT=%R					# Control the output of the 'time' command
+export RESULTS="copytest.csv"			# Where CSV output goes
+export ERRORS="copytest.err"			# Where STDERR messages go
+export CHART="copytest.png"				# Name of chart graphic
+export CHART_X=1024						# gnuplot chart x res
+export CHART_Y=800						# gnuplot chart y res
+export SLEEPTIME=5						# How long to pause between tests/test iterations
+export GNUPLOT=0
+
+# From: https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced	
+(return 0 2>/dev/null) && SOURCED=1 || SOURCED=0
+	
+create_headers() {
+	# CSV Header
+	HEADER="Copy Task,Date,File size (MBytes),cp,rsync,dd bs=512,dd bs=8k,dd bs=16k,dd bs=32k,dd bs=64k,dd bs=128k,dd bs=256k,dd bs=512k,dd bs=1024k,dd bs=2048k,dd bs=4096k"
+	
+	echo "Creating CSV File"
+	echo "================="
+	if [ -f "$RESULTS" ]
+	then
+		if [ -s "$RESULTS" ]
+		then
+			# No-op; results exists
+			echo "- Ok: Reused existing CSV results file '$RESULTS'"
+			echo ""
+		else
+			# Write headers
+			echo "$HEADER" > $RESULTS
+			if [ "$?" = "0" ]
+			then
+				echo "- Ok: Created CSV file '$RESULTS'"
+			else
+				echo "- Error: Unable to create CSV results file '$RESULTS'"
+				return 1
+			fi
+			echo ""
+		fi
+	else
+		# Create CSV file and write headers
+		echo "$HEADER" > $RESULTS
+		if [ "$?" = "0" ]
+		then
+			echo "- Ok: Wrote CSV headers to file '$RESULTS'"
+		else
+			echo "- Error: Unable to create CSV results file '$RESULTS'"
+			return 1
+		fi
+		echo ""
+	fi
+}
+
+create_testfile() {
+	# Re-use a test file if one already exists
+	echo "Creating Output File"
+	echo "===================="
+	
+	if [ -s "$SRC" ]
+	then
+		echo "Reusing $SRC"
+		echo ""
+	else
+		echo "Creating $SRC ... please wait ... "
+		SPEED=`{ time dd if=/dev/random of=$SRC bs=1M count=$COUNTSIZE >/dev/null 2>>$ERRORS; } 2>&1`
+		if [ "$?" != "0" ]
+        then
+            echo ""
+			echo "- Error creating $SRC ..."
+            cat $ERRORS
+            return 1
+        fi
+		sleep $SLEEPTIME
+		sync $SRC
+		SPEED=`echo "$SRC_BYTES / $SPEED / 1024 / 1024" | bc`
+		echo "- Ok: Created from /dev/random at $SPEED MB/s"
+		echo ""
+	fi
+}
+
+create_chart_single() {
+	# Create a chart using a single testing data result line
+	echo "Using Single Result Chart"
+	echo "========================="
+	
+	# Read data line from result csv
+	PLOTFILE=`mktemp`
+	PLOTDATA=`mktemp`
+	
+	# Extract headers
+	echo "Extracting headers and cell values..."
+	l=`cat $RESULTS | grep "Copy Task"`
+	
+	DATA_TITLE=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $1}'`
+	# Test columns 4-16 inclusive
+	# Get test names
+	TEST1_LABEL=`echo "$l" | awk -F, '{print $4}'`
+	TEST1_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $4}'`
+	
+	TEST2_LABEL=`echo "$l" | awk -F, '{print $5}'`
+	TEST2_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $5}'`
+	
+	TEST3_LABEL=`echo "$l" | awk -F, '{print $6}'`
+	TEST3_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $6}'`
+	
+	TEST4_LABEL=`echo "$l" | awk -F, '{print $7}'`
+	TEST4_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $7}'`
+	
+	TEST5_LABEL=`echo "$l" | awk -F, '{print $8}'`
+	TEST5_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $8}'`
+	
+	TEST6_LABEL=`echo "$l" | awk -F, '{print $9}'`
+	TEST6_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $9}'`
+	
+	TEST7_LABEL=`echo "$l" | awk -F, '{print $10}'`
+	TEST7_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $10}'`
+	
+	TEST8_LABEL=`echo "$l" | awk -F, '{print $11}'`
+	TEST8_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $11}'`
+	
+	TEST9_LABEL=`echo "$l" | awk -F, '{print $12}'`
+	TEST9_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $12}'`
+	
+	TEST10_LABEL=`echo "$l" | awk -F, '{print $13}'`
+	TEST10_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $13}'`
+	
+	TEST11_LABEL=`echo "$l" | awk -F, '{print $14}'`
+	TEST11_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $14}'`
+	
+	TEST12_LABEL=`echo "$l" | awk -F, '{print $15}'`
+	TEST12_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $15}'`
+	
+	TEST13_LABEL=`echo "$l" | awk -F, '{print $16}'`
+	TEST13_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $16}'`	
+	
+	# Write test headers and cell values to plot data file
+	echo "TEST \"$DATA_TITLE\"" > $PLOTDATA
+	echo "\"$TEST1_LABEL\" $TEST1_DATA" >> $PLOTDATA
+	echo "\"$TEST2_LABEL\" $TEST2_DATA" >> $PLOTDATA
+	echo "\"$TEST3_LABEL\" $TEST3_DATA" >> $PLOTDATA
+	echo "\"$TEST4_LABEL\" $TEST4_DATA" >> $PLOTDATA
+	echo "\"$TEST5_LABEL\" $TEST5_DATA" >> $PLOTDATA
+	echo "\"$TEST6_LABEL\" $TEST6_DATA" >> $PLOTDATA
+	echo "\"$TEST7_LABEL\" $TEST7_DATA" >> $PLOTDATA
+	echo "\"$TEST8_LABEL\" $TEST8_DATA" >> $PLOTDATA
+	echo "\"$TEST9_LABEL\" $TEST9_DATA" >> $PLOTDATA
+	echo "\"$TEST10_LABEL\" $TEST10_DATA" >> $PLOTDATA
+	echo "\"$TEST11_LABEL\" $TEST11_DATA" >> $PLOTDATA
+	echo "\"$TEST12_LABEL\" $TEST12_DATA" >> $PLOTDATA
+	echo "\"$TEST13_LABEL\" $TEST13_DATA" >> $PLOTDATA
+	echo "- Ok"
+	
+	# gnuplot instructions
+	echo ""
+	echo "Generating plot script..."
+	echo "# Plotfile for Copytest result data"								> $PLOTFILE
+	echo "set terminal pngcairo enhanced font \"arial,10\" fontscale 1.0 size $CHART_X, $CHART_Y" >> $PLOTFILE
+	echo "set colorbox vertical origin screen 0.9, 0.2 size screen 0.05, 0.6 front  noinvert bdefault" >> $PLOTFILE
+	echo "set output '$CHART'"												>> $PLOTFILE
+	echo 'set title "Copytest filesystem performance results"' 				>> $PLOTFILE
+	echo 'set style data linespoints' 										>> $PLOTFILE
+	echo 'set ylabel "MBytes/sec"' 											>> $PLOTFILE
+	echo 'set xlabel "Copy method"' 										>> $PLOTFILE
+	echo 'set yrange [0:*]' 												>> $PLOTFILE
+	echo 'set key autotitle columnhead' 									>> $PLOTFILE
+	echo 'set xtics rotate'													>> $PLOTFILE
+	echo "plot '$PLOTDATA' using 2:xticlabel(1)" 							>> $PLOTFILE
+	echo "#" 																>> $PLOTFILE
+	echo "- Ok"
+	
+	echo ""
+	echo "Running gnuplot..."
+	gnuplot < $PLOTFILE
+	if [ "$?" = "0" ]
+	then
+		echo "- Ok"
+	else
+		echo "- Error: Call to gnuplot returned an error"
+	fi
+	
+	echo ""
+	echo "Cleaning up"
+	echo "==========="
+	rm -f -v $PLOTFILE
+	rm -f -v $PLOTDATA
+	echo ""
+}
+
+create_chart_multi() {
+	# Create a chart using a multiple testing data result lines
+	echo "Using Multi-Result Chart"
+	echo "========================"
+}
+
+create_chart() {
+	# Given a result CSV file, attempt to create charts using gnuplot
+	echo "Start Chart Generation"
+	echo "======================"
+	
+	if [ -s "$RESULTS" ]
+	then
+		echo "- Ok: Using '$RESULTS'"
+		
+		RESULTS_LINES=`cat $RESULTS | grep -v ^"Copy Task" | wc -l | awk '{print $1}'`
+		if [ "$RESULTS_LINES" = "0" ]
+		then
+			echo "Error: No line(s) of testing result data found in '$RESULTS'"
+			return 1
+		else
+			echo "- Ok: Found $RESULTS_LINES line(s) of testing result data"
+			echo ""
+			if [ "$RESULTS_LINES" = "1" ]
+			then
+				# One line of data
+				create_chart_single
+				
+				echo "Attempting xdg-open of $CHART ..."
+				xdg-open $CHART
+				if [ "$?" = "0" ]
+				then
+					echo "- Ok"
+				else
+					echo "- Warning: Unable to open image viewer"
+				fi
+				echo ""
+			else
+				# Multiple lines of data
+				create_chart_multi
+			fi
+		fi
+		
+	else
+		echo "Error: No CSV results file found"
+		return 1
+	fi
+	
+	echo ""
+	echo "Chart completed - generated data in '$CHART'"
+}
+
+cleanup() {
+	# Clear the test files
+	echo "Cleaning Up"
+	echo "==========="
+	rm -v -f $SRC
+	rm -v -f $DST
+	echo ""
+}
+
+bw_test() {
+	# $1 = name of test
+	# $2 = SRC
+	# $3 = DST
+	TESTNAME="$1"
+	
+	if [ "$2" = "$3" ]
+	then
+		echo "Error: Source and destination cannot be the same directory."
+		return 1
+	fi
+	
+	SRC="$2/copytest.file"
+	DST="$3/copytest.file"
+
+	echo "Starting Test"
+	echo "============="
+	echo "- Test name: $TESTNAME"
+	echo ""
+
+	create_headers
+	create_testfile
+
+	# Record the size of the test file so that
+	# all calculations are based on whatever file size
+	# we are using
+	echo "Benchmarks"
+	echo "=========="
+	echo "Benchmarking $TESTNAME ... please wait ... "
+	SRC_BYTES=`ls -l $SRC | awk '{print $5}'`
+	SRC_SIZE=`echo "$SRC_BYTES / 1024 / 1024" | bc`
+	echo -n "$TESTNAME,$TESTDATE,$SRC_SIZE," >> $RESULTS
+
+	#######################################################################
+	# A basic test using 'cp'
+	#######################################################################
+	echo -n "- cp"
+	SPEED=`{ time cp -f $SRC $DST >/dev/null 2>>$ERRORS; } 2>&1`
+	if [ "$?" != "0" ]
+    then
+        echo ""
+     	echo "- Error cp $SRC ..."
+        cat $ERRORS
+        return 1
+    fi
+	sleep $SLEEPTIME
+	sync $DST
+	rm -f $DST
+	SPEED=`echo "$SRC_BYTES / $SPEED / 1024 / 1024" | bc`
+	echo "		$SPEED MB/s"
+	echo -n "$SPEED," >> $RESULTS
+
+	#######################################################################
+	# Using 'rsync'
+	#######################################################################
+	echo -n "- rsync"
+	SPEED=`{ time rsync --inplace $SRC $DST >/dev/null 2>>$ERRORS; } 2>&1`
+	if [ "$?" != "0" ]
+    then
+        echo ""
+		echo "- Error rsync $SRC ..."
+        cat $ERRORS
+        return 1
+    fi
+	sleep $SLEEPTIME
+	sync $DST
+	rm -f $DST
+	SPEED=`echo "$SRC_BYTES / $SPEED / 1024 / 1024" | bc`
+	echo "		$SPEED MB/s"
+	echo -n "$SPEED," >> $RESULTS
+
+	#######################################################################
+	# Using 'dd' with incrementally larger block sizes
+	#######################################################################
+	for BSIZE in "512" "8k" "16k" "32k" "64k" "128k" "256k" "512k" "1024k" "2048k" "4096k"
+	do
+		echo -n "- dd bs=${BSIZE}"
+		rm -f $DST
+	    SPEED=`{ time dd if=$SRC of=$DST bs=${BSIZE} 2>>$ERRORS; } 2>&1`
+		if [ "$?" != "0" ]
+        then
+            echo ""
+			echo "- Error dd bs=$BSIZE $SRC ..."
+            cat $ERRORS
+            return 1
+        fi
+		sleep $SLEEPTIME
+		SPEED=`echo "$SRC_BYTES / $SPEED / 1024 / 1024" | bc`
+		echo "	$SPEED MB/s"
+		sync $DST
+		echo -n "$SPEED," >> $RESULTS
+
+	done
+
+	# Terminate results file with final newline
+	echo "" >> $RESULTS
+	echo "- Ok"
+	echo ""
+	cleanup
+	echo "Test completed - results in '$RESULTS'"
+	
+}
+
+bw_chart() {
+	create_chart	
+}
+
+help_text(){
+	echo "You can now run your file transfer tests using the following syntax:"
+	echo "bw_test NAME_OF_TEST /SRC_DIR /DEST_DIR"
+	echo ""
+	echo "For example:"
+	echo "$ bw_test TMP_to_VAR /tmp /var"
+	echo "Your results will be captured in '$RESULTS'"
+	echo ""
+	echo "You can chart any data in '$RESULTS' with bw_chart, for example:"
+	echo "$ bw_chart"
+	echo "Your chart will be created as '$CHART'"
+}
+
+if [ "$SOURCED" = "1" ]
+then
+	echo "Copytest - A simple file copy transfer speed testing tool"
+	echo
+	echo "Checking for tools"
+	echo "=================="
+	for tool in cp rsync dd bc
+	do
+		which $tool
+		if [ "$?" = "1" ]
+		then
+			echo "ERROR: $tool not found"
+			return 1
+		fi
+	done
+	which gnuplot
+	if [ "$?" = "1" ]
+	then
+		echo "WARN: gnuplot not found - no chart output available"
+		export GNUPLOT=0
+	else
+		export GNUPLOT=1
+	fi
+	echo ""
+	help_text
+else
+	echo "Copytest - A simple file copy transfer speed testing tool"
+	echo
+	echo "You need to 'source' this file first."
+	echo "For example:"
+	echo "$ source $0"
+fi
