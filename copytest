@@ -168,6 +168,12 @@ create_chart_single() {
 	TEST13_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $16}'`	
 	
 	# Write test headers and cell values to plot data file
+	# Data file looks like
+	# TEST TEST_NAME
+	# COPY_METHOD COPY1_VALUE
+	# COPY2_METHOD COPY2_VALUE
+	#...
+	# COPYN_METHOD COPYN_VALUE
 	echo "TEST \"$DATA_TITLE\"" > $PLOTDATA
 	echo "\"$TEST1_LABEL\" $TEST1_DATA" >> $PLOTDATA
 	echo "\"$TEST2_LABEL\" $TEST2_DATA" >> $PLOTDATA
@@ -188,10 +194,10 @@ create_chart_single() {
 	echo ""
 	echo "Generating plot script..."
 	echo "# Plotfile for Copytest result data"								> $PLOTFILE
-	echo "set terminal pngcairo enhanced font \"arial,10\" fontscale 1.0 size $CHART_X, $CHART_Y" >> $PLOTFILE
+	echo "set terminal pngcairo enhanced font \"arial,12\" fontscale 1.0 size $CHART_X, $CHART_Y" >> $PLOTFILE
 	echo "set colorbox vertical origin screen 0.9, 0.2 size screen 0.05, 0.6 front  noinvert bdefault" >> $PLOTFILE
 	echo "set output '$CHART'"												>> $PLOTFILE
-	echo 'set title "Copytest filesystem performance results"' 				>> $PLOTFILE
+	echo 'set title "Copytest - Filesystem Benchmark Results"' 				>> $PLOTFILE
 	echo 'set style data linespoints' 										>> $PLOTFILE
 	echo 'set ylabel "MBytes/sec"' 											>> $PLOTFILE
 	echo 'set xlabel "Copy method"' 										>> $PLOTFILE
@@ -224,6 +230,52 @@ create_chart_multi() {
 	# Create a chart using a multiple testing data result lines
 	echo "Using Multi-Result Chart"
 	echo "========================"
+	
+	IS_SINGLE_TEST=1
+	HAS_MULTI_DATA=0
+	
+	# Is this a csv with only one test, but multiple data sets?
+	
+	echo ""
+	echo "Determining necessary chart type..."
+	TOTAL_TESTS=`cat $RESULTS | grep -v "Copy Task" | awk -F, '{print $1}' | sort | uniq | wc -l`
+	if [ "$TOTAL_TESTS" = "1" ]
+	then
+		echo "- Ok: Single test type with multiple data lines"
+		export IS_SINGLE_TEST=1
+	else
+		echo "- Ok: Multi test type"
+		export IS_SINGLE_TEST=0
+	fi
+	
+	# Single test has a single spline, and error bars
+	if [ "$IS_SINGLE_TEST" = "1" ]
+	then
+		echo ""
+		echo "Extracting headers and cell values..."
+		echo "Generate error ranges..."
+		
+		# TEST TEST_NAME
+		# COPY_METHOD1 VALUE1_AVG VALUE1_RANGE
+		# COPY_METHOD2 VALUE1_AVG VALUE2_RANGE
+		# ...
+		# COPY_METHODN VALUEN_AVG VALUEN_RANGE
+		
+		DATA_TITLE=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $1}'`
+		
+		for col in 1 4 5 6 7 8 9 10 11 12 13 14
+		cat $RESULTS | grep -v "Copy Task" | while read l
+		do
+			TEST1_LABEL=`echo "$l" | awk -F, '{print $1}'`
+			echo "$TEST1_LABEL"
+		done
+		
+		#TEST1_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $4}'`
+	fi
+	
+	
+	
+	echo ""
 }
 
 create_chart() {
@@ -385,7 +437,13 @@ bw_test() {
 }
 
 bw_chart() {
-	create_chart	
+	if [ "$GNUPLOT" = "1" ]
+	then
+		create_chart	
+	else
+		echo "Error: gnuplot not found, unable to process result CSV data."
+		return 1
+	fi
 }
 
 help_text(){
