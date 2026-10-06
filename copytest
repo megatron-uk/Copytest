@@ -310,6 +310,7 @@ create_chart_multi() {
 		
 	done <<< "`cat $RESULTS | grep -v ^'Copy Task' | awk -F, '{print $1}' | sort | uniq`"
 	echo "- Ok: ${#TEST_NAMES[@]} tests"
+	echo 
 	
 	##############################################################################
 	# Get field names from the CSV
@@ -333,7 +334,7 @@ create_chart_multi() {
 		TEST_NAME=${TEST_NAMES[$i]}
 		
 		# Is this test a single line or multi?
-		TEST_LINES=`grep "$TEST_NAME" $RESULTS | wc -l | awk '{print $1}'`
+		TEST_LINES=`grep ^"$TEST_NAME," $RESULTS | wc -l | awk '{print $1}'`
 		if [ "$TEST_LINES" = "1" ]
 		then
 			# Single line of data for this test
@@ -388,7 +389,9 @@ create_chart_multi() {
 			done <<< "`cat $RESULTS | grep ^"$TEST_NAME," | cut -d',' -f ${TEST_COL_START}-${TEST_COL_END} | sed 's/,/\n/g'`"
 			
 			# Check we have the same number of values as we have fields
+			# if we have multiple rows for this test, it should be: lines * fields = total number of values
 			let TOTAL_VALUES=(${#TEST_FIELD_NAMES[@]} * $TEST_LINES)
+			echo "${#TEST_FIELD_VALUES[@]} $TOTAL_VALUES"
 			if [ "${#TEST_FIELD_VALUES[@]}" = "$TOTAL_VALUES" ]
 			then
 				echo "-- Ok: Multi result, $TOTAL_VALUES values; ${#TEST_FIELD_NAMES[@]} values x $TEST_LINES results"
@@ -421,17 +424,18 @@ create_chart_multi() {
 	echo ""
 	echo "Generating plot script..."
 	echo "set terminal pngcairo enhanced font \"arial,12\" fontscale 1.0 size $CHART_X, $CHART_Y" >> $PLOTFILE
-	#echo "set colorbox vertical origin screen 0.9, 0.2 size screen 0.05, 0.6 front  noinvert bdefault" >> $PLOTFILE
+	echo "set colorbox vertical origin screen 0.9, 0.2 size screen 0.05, 0.6 front  noinvert bdefault" >> $PLOTFILE
 	echo 'set key fixed right top vertical Right noreverse enhanced autotitle columnhead nobox' >> $PLOTFILE
 	echo "set output '$CHART'"												>> $PLOTFILE
 	echo 'set title "Copytest - Filesystem Benchmark Results"' 				>> $PLOTFILE
-	echo 'set style data linespoints' 										>> $PLOTFILE
+	echo 'set style data yerrorlines' 										>> $PLOTFILE
 	echo 'set ylabel "MBytes/sec"' 											>> $PLOTFILE
 	echo 'set xlabel "Copy method"' 										>> $PLOTFILE
 	echo 'set yrange [0:*]' 												>> $PLOTFILE
 	echo 'set xtics rotate'													>> $PLOTFILE
 	echo 'set xtics norangelimit'											>> $PLOTFILE 
 	echo 'set xtics ()'														>> $PLOTFILE
+	echo 'set grid'															>> $PLOTFILE
 	echo 'set trange [ * : * ] noreverse nowriteback'						>> $PLOTFILE
 	echo 'set urange [ * : * ] noreverse nowriteback'						>> $PLOTFILE
 	echo 'set vrange [ * : * ] noreverse nowriteback'						>> $PLOTFILE
@@ -448,9 +452,11 @@ create_chart_multi() {
 	do
 		if [ "$i" = "0" ]
 		then
-			echo "plot '$PLOTDATA' using 2:xticlabel(1) index 0,\\"	 		>> $PLOTFILE
+			echo "plot '$PLOTDATA' using 0:2:3:xticlabel(1) index 0 lw 2 with yerrorlines,\\"	 		>> $PLOTFILE
+			#echo "plot '$PLOTDATA' using 0:2:3:xticlabel(1) index 0 lw 2,\\"	 		>> $PLOTFILE
 		else
-			echo "     '' using 2:xticlabel(1) index $i,\\"	 			>> $PLOTFILE
+			echo "     '' using 0:2:3:xticlabel(1) index $i lw 2 with yerrorlines,\\"	>> $PLOTFILE
+			#echo "     '' using 0:2:3:xticlabel(1) index $i lw 2,\\"	 			>> $PLOTFILE
 		fi
 	done
 	echo "- Ok"
