@@ -115,120 +115,6 @@ create_testfile() {
 	fi
 }
 
-create_chart_single() {
-	# Create a chart using a single testing data result line
-	echo "Using Single Result Chart"
-	echo "========================="
-	
-	# Read data line from result csv
-	PLOTFILE=`mktemp`
-	PLOTDATA=`mktemp`
-	
-	# Extract headers
-	echo "Extracting headers and cell values..."
-	l=`cat $RESULTS | grep "Copy Task"`
-	
-	DATA_TITLE=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $1}'`
-	# Test columns 4-16 inclusive
-	# Get test names
-	TEST1_LABEL=`echo "$l" | awk -F, '{print $4}'`
-	TEST1_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $4}'`
-	
-	TEST2_LABEL=`echo "$l" | awk -F, '{print $5}'`
-	TEST2_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $5}'`
-	
-	TEST3_LABEL=`echo "$l" | awk -F, '{print $6}'`
-	TEST3_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $6}'`
-	
-	TEST4_LABEL=`echo "$l" | awk -F, '{print $7}'`
-	TEST4_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $7}'`
-	
-	TEST5_LABEL=`echo "$l" | awk -F, '{print $8}'`
-	TEST5_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $8}'`
-	
-	TEST6_LABEL=`echo "$l" | awk -F, '{print $9}'`
-	TEST6_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $9}'`
-	
-	TEST7_LABEL=`echo "$l" | awk -F, '{print $10}'`
-	TEST7_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $10}'`
-	
-	TEST8_LABEL=`echo "$l" | awk -F, '{print $11}'`
-	TEST8_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $11}'`
-	
-	TEST9_LABEL=`echo "$l" | awk -F, '{print $12}'`
-	TEST9_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $12}'`
-	
-	TEST10_LABEL=`echo "$l" | awk -F, '{print $13}'`
-	TEST10_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $13}'`
-	
-	TEST11_LABEL=`echo "$l" | awk -F, '{print $14}'`
-	TEST11_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $14}'`
-	
-	TEST12_LABEL=`echo "$l" | awk -F, '{print $15}'`
-	TEST12_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $15}'`
-	
-	TEST13_LABEL=`echo "$l" | awk -F, '{print $16}'`
-	TEST13_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $16}'`	
-	
-	# Write test headers and cell values to plot data file
-	# Data file looks like
-	# TEST TEST_NAME
-	# COPY_METHOD COPY1_VALUE
-	# COPY2_METHOD COPY2_VALUE
-	#...
-	# COPYN_METHOD COPYN_VALUE
-	echo "TEST \"$DATA_TITLE\"" > $PLOTDATA
-	echo "\"$TEST1_LABEL\" $TEST1_DATA" >> $PLOTDATA
-	echo "\"$TEST2_LABEL\" $TEST2_DATA" >> $PLOTDATA
-	echo "\"$TEST3_LABEL\" $TEST3_DATA" >> $PLOTDATA
-	echo "\"$TEST4_LABEL\" $TEST4_DATA" >> $PLOTDATA
-	echo "\"$TEST5_LABEL\" $TEST5_DATA" >> $PLOTDATA
-	echo "\"$TEST6_LABEL\" $TEST6_DATA" >> $PLOTDATA
-	echo "\"$TEST7_LABEL\" $TEST7_DATA" >> $PLOTDATA
-	echo "\"$TEST8_LABEL\" $TEST8_DATA" >> $PLOTDATA
-	echo "\"$TEST9_LABEL\" $TEST9_DATA" >> $PLOTDATA
-	echo "\"$TEST10_LABEL\" $TEST10_DATA" >> $PLOTDATA
-	echo "\"$TEST11_LABEL\" $TEST11_DATA" >> $PLOTDATA
-	echo "\"$TEST12_LABEL\" $TEST12_DATA" >> $PLOTDATA
-	echo "\"$TEST13_LABEL\" $TEST13_DATA" >> $PLOTDATA
-	echo "- Ok"
-	
-	# gnuplot instructions
-	echo ""
-	echo "Generating plot script..."
-	echo "# Plotfile for Copytest result data"								> $PLOTFILE
-	echo "set terminal pngcairo enhanced font \"arial,12\" fontscale 1.0 size $CHART_X, $CHART_Y" >> $PLOTFILE
-	echo "set colorbox vertical origin screen 0.9, 0.2 size screen 0.05, 0.6 front  noinvert bdefault" >> $PLOTFILE
-	echo "set output '$CHART'"												>> $PLOTFILE
-	echo 'set title "Copytest - Filesystem Benchmark Results"' 				>> $PLOTFILE
-	echo 'set style data linespoints' 										>> $PLOTFILE
-	echo 'set ylabel "MBytes/sec"' 											>> $PLOTFILE
-	echo 'set xlabel "Copy method"' 										>> $PLOTFILE
-	echo 'set yrange [0:*]' 												>> $PLOTFILE
-	echo 'set key autotitle columnhead' 									>> $PLOTFILE
-	echo 'set xtics rotate'													>> $PLOTFILE
-	echo "plot '$PLOTDATA' using 2:xticlabel(1)" 							>> $PLOTFILE
-	echo "#" 																>> $PLOTFILE
-	echo "- Ok"
-	
-	echo ""
-	echo "Running gnuplot..."
-	gnuplot < $PLOTFILE
-	if [ "$?" = "0" ]
-	then
-		echo "- Ok"
-	else
-		echo "- Error: Call to gnuplot returned an error"
-	fi
-	
-	echo ""
-	echo "Cleaning up"
-	echo "==========="
-	rm -f -v $PLOTFILE
-	rm -f -v $PLOTDATA
-	echo ""
-}
-
 get_test_average() {
 	# Returns the average for a field, summed from all results for a given test
 	# $1 == name of test
@@ -453,10 +339,8 @@ create_chart_multi() {
 		if [ "$i" = "0" ]
 		then
 			echo "plot '$PLOTDATA' using 0:2:3:xticlabel(1) index 0 lw 2 with yerrorlines,\\"	 		>> $PLOTFILE
-			#echo "plot '$PLOTDATA' using 0:2:3:xticlabel(1) index 0 lw 2,\\"	 		>> $PLOTFILE
 		else
 			echo "     '' using 0:2:3:xticlabel(1) index $i lw 2 with yerrorlines,\\"	>> $PLOTFILE
-			#echo "     '' using 0:2:3:xticlabel(1) index $i lw 2,\\"	 			>> $PLOTFILE
 		fi
 	done
 	echo "- Ok"
@@ -503,26 +387,12 @@ create_chart() {
 		else
 			echo "- Ok: Found $RESULTS_LINES line(s) of testing result data"
 			echo ""
-			if [ "$RESULTS_LINES" = "1" ]
-			then
-				# One line of data
-				create_chart_single
-				
-				echo "Attempting xdg-open of $CHART ..."
-				xdg-open $CHART
-				if [ "$?" = "0" ]
-				then
-					echo "- Ok"
-				else
-					echo "- Warning: Unable to open image viewer"
-				fi
-				echo ""
-			else
-				# Multiple lines of data
-				create_chart_multi
-				echo "Attempting xdg-open of $CHART ..."
-				xdg-open $CHART
-			fi
+			
+			# Multiple lines of data
+			create_chart_multi
+			echo "Attempting xdg-open of $CHART ..."
+			xdg-open $CHART
+			
 		fi
 		
 	else
