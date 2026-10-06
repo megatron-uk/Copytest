@@ -41,7 +41,10 @@ export CHART="copytest.png"				# Name of chart graphic
 export CHART_X=1024						# gnuplot chart x res
 export CHART_Y=800						# gnuplot chart y res
 export SLEEPTIME=5						# How long to pause between tests/test iterations
-export GNUPLOT=0
+export GNUPLOT=0						# Do we have gnuplot
+export TEST_COL_START=4					# Which column contains the first test data
+export TEST_COL_END=16					# Which column contains the last test data
+
 
 # From: https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced	
 (return 0 2>/dev/null) && SOURCED=1 || SOURCED=0
@@ -226,55 +229,254 @@ create_chart_single() {
 	echo ""
 }
 
+get_test_average() {
+	# Returns the average for a field, summed from all results for a given test
+	# $1 == name of test
+	# $2 == index of field
+	
+	# Array is indexed from 0, but the awk field needs to be from 1
+	let field_id=($2 + 1)
+	lines=0
+	total_v=0
+	v=0
+	average_v=0
+	while read v
+	do
+		let total_v=($total_v + $v) 
+		let lines=($lines + 1)
+	done <<< "`cat $RESULTS | grep ^"$1," |  cut -d',' -f ${TEST_COL_START}-${TEST_COL_END} | awk -F, '{print $'$field_id'}'`"
+	average_v=`echo "$total_v / $lines" | bc -l`
+	echo $average_v
+}
+
+get_test_range() {
+	# Returns the range for a given field, for a given test
+	# $1 == name of test
+	# $2 == index of field
+	
+	# Array is indexed from 0, but the awk field needs to be from 1
+	let field_id=($2 + 1)
+	min_v=9999999
+	max_v=0
+	range_v=0
+	while read v
+	do
+		if [ "$v" -gt "$max_v" ]
+		then
+			max_v=$v
+		fi
+		
+		if [ "$v" -lt "$min_v" ]
+		then
+			min_v=$v
+		fi
+	done <<< "`cat $RESULTS | grep ^"$1," |  cut -d',' -f ${TEST_COL_START}-${TEST_COL_END} | awk -F, '{print $'$field_id'}'`"
+	let range_v=($max_v - $min_v)
+	
+	# Do not allow negative ranges
+	if [ "$range_v" -lt 0 ]
+	then
+		range_v=0
+	fi
+	echo $range_v
+}
+
 create_chart_multi() {
 	# Create a chart using a multiple testing data result lines
 	echo "Using Multi-Result Chart"
 	echo "========================"
 	
-	IS_SINGLE_TEST=1
-	HAS_MULTI_DATA=0
+	PLOTFILE=`mktemp`
+	PLOTDATA=`mktemp`
 	
-	# Is this a csv with only one test, but multiple data sets?
+	# TEST TEST_NAME
+	# COPY_METHOD1 VALUE1_AVG VALUE1_RANGE
+	# COPY_METHOD2 VALUE1_AVG VALUE2_RANGE
+	# ...
+	# COPY_METHODN VALUEN_AVG VALUEN_RANGE
+	
+	# Array of all unique test names
+	export TEST_NAMES=()
+	export TEST_FIELD_NAMES=()
+	
+	##############################################################################
+	# Get test names from the CSV
+	##############################################################################
+	echo ""
+	echo "Extract test names..."
+	while read TEST_NAME
+	do
+		TEST_NAMES+=( "$TEST_NAME" )
+		
+	done <<< "`cat $RESULTS | grep -v ^'Copy Task' | awk -F, '{print $1}' | sort | uniq`"
+	echo "- Ok: ${#TEST_NAMES[@]} tests"
+	
+	##############################################################################
+	# Get field names from the CSV
+	##############################################################################
+	echo ""
+	echo "Extract field names..."
+	while read TEST_FIELD_NAME
+	do
+		TEST_FIELD_NAMES+=( "$TEST_FIELD_NAME" )	
+	done <<< "`cat $RESULTS | grep ^'Copy Task' | cut -d',' -f ${TEST_COL_START}-${TEST_COL_END} | sed 's/,/\n/g'`"
+	echo "- Ok: ${#TEST_FIELD_NAMES[@]} fields"
+	
+	##############################################################################
+	# For each test, determine if it is a single or multi-result type, and 
+	# extract all relevant field values
+	##############################################################################
+	echo ""
+	echo "Check test result type..."
+	for i in ${!TEST_NAMES[@]}
+	do
+		TEST_NAME=${TEST_NAMES[$i]}
+		
+		# Is this test a single line or multi?
+		TEST_LINES=`grep "$TEST_NAME" $RESULTS | wc -l | awk '{print $1}'`
+		if [ "$TEST_LINES" = "1" ]
+		then
+			# Single line of data for this test
+			echo "- [$i] Single result	: '$TEST_NAME'"
+			IS_SINGLE_RESULT=1
+		else
+			# More than one line of data for this test
+			echo "- [$i] Multiple results	: '$TEST_NAME'"
+			IS_SINGLE_RESULT=0
+		fi
+		
+		# If single, find the row for this test name and read all field values
+		if [ "$IS_SINGLE_RESULT" = "1" ]
+		then
+			TEST_FIELD_VALUES=()
+			while read TEST_FIELD_VALUE
+			do
+				TEST_FIELD_VALUES+=( "$TEST_FIELD_VALUE" )
+				
+			done <<< "`cat $RESULTS | grep ^"$TEST_NAME," | cut -d',' -f ${TEST_COL_START}-${TEST_COL_END} | sed 's/,/\n/g'`"
+			
+			# Check we have the same number of values as we have fields
+			if [ "${#TEST_FIELD_VALUES[@]}" = "${#TEST_FIELD_NAMES[@]}" ]
+			then
+				echo "-- Ok: Single result, ${#TEST_FIELD_VALUES[@]} values"
+			else
+				echo "-- Error: Single result, ${#TEST_FIELD_VALUES[@]} values, should be ${#TEST_FIELD_NAMES[@]}"
+				return 1
+			fi
+			
+			# Write this test result to the Copytest gnuplot .dat file
+			# The error range for this result set is zero, since we only have one result
+			echo "TEST \"$TEST_NAME\"" >> $PLOTDATA
+			for f in ${!TEST_FIELD_NAMES[@]}
+			do
+				TEST_FIELD_NAME=${TEST_FIELD_NAMES[$f]}
+				TEST_FIELD_VALUE=${TEST_FIELD_VALUES[$f]}
+				echo "\"$TEST_FIELD_NAME\" $TEST_FIELD_VALUE 0" >> $PLOTDATA
+			done
+			echo "" >> $PLOTDATA
+			echo "" >> $PLOTDATA
+		fi
+		
+		# If multi, loop over all rows for this test name, read all field values and calculate averages and error ranges
+		if [ "$IS_SINGLE_RESULT" = "0" ]
+		then
+			
+			TEST_FIELD_VALUES=()
+			while read TEST_FIELD_VALUE
+			do
+				TEST_FIELD_VALUES+=( "$TEST_FIELD_VALUE" )
+			done <<< "`cat $RESULTS | grep ^"$TEST_NAME," | cut -d',' -f ${TEST_COL_START}-${TEST_COL_END} | sed 's/,/\n/g'`"
+			
+			# Check we have the same number of values as we have fields
+			let TOTAL_VALUES=(${#TEST_FIELD_NAMES[@]} * $TEST_LINES)
+			if [ "${#TEST_FIELD_VALUES[@]}" = "$TOTAL_VALUES" ]
+			then
+				echo "-- Ok: Multi result, $TOTAL_VALUES values; ${#TEST_FIELD_NAMES[@]} values x $TEST_LINES results"
+			else
+				echo "-- Error: Multi result, $TOTAL_VALUES values, should be ${#TEST_FIELD_NAMES[@]} x $TEST_LINES"
+				return 1
+			fi
+			
+			# Write this test result to the Copytest gnuplot .dat file
+			# Calculate the average since we have multiple results for this test
+			# Calculate the error range
+			echo "TEST \"$TEST_NAME\"" >> $PLOTDATA
+			
+			echo "--- Extracting, summing and averaging all field values"
+			for f in ${!TEST_FIELD_NAMES[@]}
+			do
+				TEST_FIELD_NAME=${TEST_FIELD_NAMES[$f]}
+				# Read *all* of the values for this test and sum them
+				echo "--- Test: $TEST_NAME, Column: $f, Column Name: $TEST_FIELD_NAME"
+				TEST_FIELD_AVERAGE=`get_test_average "$TEST_NAME" $f`
+				TEST_FIELD_RANGE=`get_test_range "$TEST_NAME" $f`
+				echo "\"$TEST_FIELD_NAME\" $TEST_FIELD_AVERAGE $TEST_FIELD_RANGE" >> $PLOTDATA
+			done
+			echo "" >> $PLOTDATA
+			echo "" >> $PLOTDATA
+		fi
+	done
+	
+	# gnuplot instructions
+	echo ""
+	echo "Generating plot script..."
+	echo "set terminal pngcairo enhanced font \"arial,12\" fontscale 1.0 size $CHART_X, $CHART_Y" >> $PLOTFILE
+	#echo "set colorbox vertical origin screen 0.9, 0.2 size screen 0.05, 0.6 front  noinvert bdefault" >> $PLOTFILE
+	echo 'set key fixed right top vertical Right noreverse enhanced autotitle columnhead nobox' >> $PLOTFILE
+	echo "set output '$CHART'"												>> $PLOTFILE
+	echo 'set title "Copytest - Filesystem Benchmark Results"' 				>> $PLOTFILE
+	echo 'set style data linespoints' 										>> $PLOTFILE
+	echo 'set ylabel "MBytes/sec"' 											>> $PLOTFILE
+	echo 'set xlabel "Copy method"' 										>> $PLOTFILE
+	echo 'set yrange [0:*]' 												>> $PLOTFILE
+	echo 'set xtics rotate'													>> $PLOTFILE
+	echo 'set xtics norangelimit'											>> $PLOTFILE 
+	echo 'set xtics ()'														>> $PLOTFILE
+	echo 'set trange [ * : * ] noreverse nowriteback'						>> $PLOTFILE
+	echo 'set urange [ * : * ] noreverse nowriteback'						>> $PLOTFILE
+	echo 'set vrange [ * : * ] noreverse nowriteback'						>> $PLOTFILE
+	echo 'set xrange [ * : * ] noreverse writeback'							>> $PLOTFILE
+	echo 'set x2range [ * : * ] noreverse writeback'						>> $PLOTFILE
+	echo 'set y2range [ * : * ] noreverse writeback'						>> $PLOTFILE
+	echo 'set zrange [ * : * ] noreverse writeback'							>> $PLOTFILE
+	echo 'set cbrange [ * : * ] noreverse writeback'						>> $PLOTFILE
+	echo 'set rrange [ * : * ] noreverse writeback'							>> $PLOTFILE
+	echo 'I = {0.0, 1.0}'													>> $PLOTFILE
+	echo 'NO_ANIMATION = 1'													>> $PLOTFILE
+	# Each test needs to be a seperate plot
+	for i in ${!TEST_NAMES[@]}
+	do
+		if [ "$i" = "0" ]
+		then
+			echo "plot '$PLOTDATA' using 2:xticlabel(1) index 0,\\"	 		>> $PLOTFILE
+		else
+			echo "     '' using 2:xticlabel(1) index $i,\\"	 			>> $PLOTFILE
+		fi
+	done
+	echo "- Ok"
 	
 	echo ""
-	echo "Determining necessary chart type..."
-	TOTAL_TESTS=`cat $RESULTS | grep -v "Copy Task" | awk -F, '{print $1}' | sort | uniq | wc -l`
-	if [ "$TOTAL_TESTS" = "1" ]
+	echo "==== Plot data ===="
+	cat $PLOTDATA
+	echo "EOF"
+	echo "==== Plot file ===="
+	cat $PLOTFILE
+	echo "EOF"
+	echo ""
+	echo "Running gnuplot..."
+	gnuplot < $PLOTFILE
+	if [ "$?" = "0" ]
 	then
-		echo "- Ok: Single test type with multiple data lines"
-		export IS_SINGLE_TEST=1
+		echo "- Ok"
 	else
-		echo "- Ok: Multi test type"
-		export IS_SINGLE_TEST=0
+		echo "- Error: Call to gnuplot returned an error"
 	fi
 	
-	# Single test has a single spline, and error bars
-	if [ "$IS_SINGLE_TEST" = "1" ]
-	then
-		echo ""
-		echo "Extracting headers and cell values..."
-		echo "Generate error ranges..."
-		
-		# TEST TEST_NAME
-		# COPY_METHOD1 VALUE1_AVG VALUE1_RANGE
-		# COPY_METHOD2 VALUE1_AVG VALUE2_RANGE
-		# ...
-		# COPY_METHODN VALUEN_AVG VALUEN_RANGE
-		
-		DATA_TITLE=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $1}'`
-		
-		#for col in 1 4 5 6 7 8 9 10 11 12 13 14
-		cat $RESULTS | grep -v "Copy Task" | while read l
-		do
-			TEST1_LABEL=`echo "$l" | awk -F, '{print $1}'`
-			echo "$TEST1_LABEL"
-		done
-		
-		#TEST1_DATA=`cat $RESULTS | grep -v ^"Copy Task" | awk -F, '{print $4}'`
-	fi
-	
-	
-	
+	echo ""
+	echo "Cleaning up"
+	echo "==========="
+	rm -f -v $PLOTDATA
+	rm -f -v $PLOTFILE
 	echo ""
 }
 
@@ -312,6 +514,8 @@ create_chart() {
 			else
 				# Multiple lines of data
 				create_chart_multi
+				echo "Attempting xdg-open of $CHART ..."
+				xdg-open $CHART
 			fi
 		fi
 		
